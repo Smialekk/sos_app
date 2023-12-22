@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
+// import 'package:torch_light/torch_light.dart';
+// import 'package:flashlight/flashlight.dart';
+import 'package:flutter/services.dart';
+// import 'package:torch_controller/torch_controller.dart';
+import 'package:camera/camera.dart';
 
 void main() {
   runApp(MyApp());
@@ -109,11 +114,19 @@ class _SafePersonalAppState extends State<SafePersonalApp> {
   final Geolocator _geolocator = Geolocator();
   Position? _currentPosition; // Zmieniono na Position?
 
+  //bool isFlashOn = false; // Dodajemy zmienną do śledzenia stanu latarki
+  late CameraController _controller;
+  late bool _isFlashOn;
+
   @override
   void initState() {
     super.initState();
     _checkLocationPermission();
     _getCurrentLocation();
+
+    _checkCameraPermission();
+    _initCamera();
+    _isFlashOn = false;
   }
 
   // Metoda sprawdzająca i prosząca o uprawnienia lokalizacyjne
@@ -150,6 +163,90 @@ class _SafePersonalAppState extends State<SafePersonalApp> {
     double minutes = (value - degrees) * 60;
 
     return '$degrees° ${minutes.toStringAsFixed(2)}\' $direction';
+  }
+
+  // // Nowa metoda do obsługi latarki
+  // void _toggleFlashlight() {
+  //   setState(() {
+  //     isFlashOn = !isFlashOn;
+  //   });
+
+  //   if (isFlashOn) {
+  //     // Włącz latarkę
+  //     TorchLight.turnOn();
+  //   } else {
+  //     // Wyłącz latarkę
+  //     TorchLight.turnOff();
+  //   }
+  // }
+
+  // void _toggleFlashlight() {
+  //   setState(() {
+  //     isFlashOn = !isFlashOn;
+  //   });
+
+  //   if (isFlashOn) {
+  //     _turnOnFlashlight();
+  //   } else {
+  //     _turnOffFlashlight();
+  //   }
+  // }
+
+  // // Metoda do włączania latarki
+  // void _turnOnFlashlight() {
+  //   const platform = MethodChannel('samples.flutter.dev/flashlight');
+  //   try {
+  //     platform.invokeMethod('turnOn');
+  //   } on PlatformException catch (e) {
+  //     print("Błąd podczas włączania latarki: $e");
+  //   }
+  // }
+
+  // // Metoda do wyłączania latarki
+  // void _turnOffFlashlight() {
+  //   const platform = MethodChannel('samples.flutter.dev/flashlight');
+  //   try {
+  //     platform.invokeMethod('turnOff');
+  //   } on PlatformException catch (e) {
+  //     print("Błąd podczas wyłączania latarki: $e");
+  //   }
+  // }
+
+  void _checkCameraPermission() async {
+    if (await Permission.camera.isDenied) {
+      await Permission.camera.request();
+    }
+  }
+
+  void _initCamera() async {
+    final cameras = await availableCameras();
+    final firstCamera = cameras.first;
+
+    _controller = CameraController(
+      firstCamera,
+      ResolutionPreset.low,
+      enableAudio: false,
+    );
+
+    await _controller.initialize();
+  }
+
+  // Metoda do obsługi latarki
+  void _toggleFlashlight() async {
+    if (!_controller.value.isInitialized) {
+      return;
+    }
+
+    try {
+      await _controller.setFlashMode(
+        _isFlashOn ? FlashMode.off : FlashMode.torch,
+      );
+      setState(() {
+        _isFlashOn = !_isFlashOn;
+      });
+    } catch (e) {
+      print("Błąd podczas przełączania latarki: $e");
+    }
   }
 
   @override
@@ -220,23 +317,32 @@ class _SafePersonalAppState extends State<SafePersonalApp> {
               ),
             ),
             SizedBox(height: 16.0),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                ElevatedButton(
-                  onPressed: () {
-                    // Implementacja kontrolowania latarki
-                  },
-                  child: Text('Latarka'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    // Implementacja nagrywania dźwięku
-                  },
-                  child: Text('Nagrywanie'),
-                ),
-              ],
+            ElevatedButton(
+              onPressed: () {
+                // Wywołanie funkcji włączającej lub wyłączającej latarkę
+                _toggleFlashlight();
+              },
+              child: Text('Latarka'),
             ),
+            // Row(
+            //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            //   children: [
+            //     ElevatedButton(
+            //       onPressed: _toggleFlashlight,
+            //       style: ElevatedButton.styleFrom(
+            //         primary: isFlashOn ? Colors.yellow : Colors.grey,
+            //       ),
+            //       child: Text('Latarka'),
+            //     ),
+            //     ElevatedButton(
+            //       onPressed: _toggleRecording,
+            //       style: ElevatedButton.styleFrom(
+            //         primary: isRecording ? Colors.red : Colors.grey,
+            //       ),
+            //       child: Text('Nagrywanie'),
+            //     ),
+            //   ],
+            // ),
             SizedBox(height: 16.0),
             // Odtwarzacz dźwięku
             // Tutaj można dodać widgety do odtwarzania dźwięku
