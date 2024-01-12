@@ -46,6 +46,15 @@ dependencies:
   torch_light: ^1.0.0
   # torch_controller: ^2.0.1
   camera: ^0.10.5+7
+  audioplayers: ^5.2.1
+  path_provider: ^2.0.14
+  intl: ^0.17.0
+  timer_builder: ^2.0.0
+  just_audio: ^0.9.36
+  flutter_sound: ^9.2.13
+  microphone: ^0.1.0
+  record: ^5.0.4
+  contacts_service: ^0.6.3
 
 dev_dependencies:
   flutter_test:
