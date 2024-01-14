@@ -55,6 +55,13 @@ dependencies:
   microphone: ^0.1.0
   record: ^5.0.4
   contacts_service: ^0.6.3
+  url_launcher: ^6.2.3
+  flutter_map: ^4.0.0
+  google_maps_flutter: ^2.5.2
+  media_scanner: ^2.0.0
+  open_file: ^3.3.2
+  shared_preferences: ^2.2.2
+
 
 dev_dependencies:
   flutter_test:

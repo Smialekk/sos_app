@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:contacts_service/contacts_service.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:media_scanner/media_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 // import 'package:torch_light/torch_light.dart';
 // import 'package:flashlight/flashlight.dart';
@@ -20,6 +22,12 @@ import 'package:flutter_sound/flutter_sound.dart';
 import 'package:record/record.dart';
 // import 'package:flutter_sms/flutter_sms.dart';
 // import 'package:sms_maintained/sms.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_map/flutter_map.dart';
+import "package:latlong2/latlong.dart" as latLng;
+// import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:open_file/open_file.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(MyApp());
@@ -115,6 +123,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
+//Widget listy kontaktow
 class ContactListScreen extends StatelessWidget {
   final Iterable<Contact> contacts;
 
@@ -141,6 +150,115 @@ class ContactListScreen extends StatelessWidget {
     );
   }
 }
+
+// Widget mapy
+class MapScreen extends StatelessWidget {
+  final double latitude;
+  final double longitude;
+
+  MapScreen({required this.latitude, required this.longitude});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Mapa 🗺'),
+      ),
+      body: FlutterMap(
+        options: MapOptions(
+          center: latLng.LatLng(latitude, longitude),
+          zoom: 15.0,
+        ),
+        children: [
+          TileLayer(
+            urlTemplate: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            subdomains: ['a', 'b', 'c'],
+          ),
+          MarkerLayer(
+            markers: [
+              Marker(
+                width: 40.0,
+                height: 40.0,
+                point: latLng.LatLng(latitude, longitude),
+                builder: (ctx) => Container(
+                  child: Icon(
+                    Icons.location_pin,
+                    color: Colors.red,
+                    size: 40.0,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          // Dodaj przycisk do otwierania mapy w aplikacji Google Maps
+          Align(
+            alignment: Alignment.topRight,
+            child: GestureDetector(
+              onTap: () {
+                _openMapWithGoogleMapsApp(latitude, longitude);
+              },
+              child: Container(
+                margin: EdgeInsets.all(
+                    16.0), // Dodaj margines dla dodatkowego miejsca
+                padding: EdgeInsets.all(8.0),
+                color: Colors.blue,
+                child: Text(
+                  'Otwórz w Google Maps',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Funkcja do otwierania mapy w aplikacji Google Maps
+  void _openMapWithGoogleMapsApp(double latitude, double longitude) async {
+    // String mapUrl = 'google.navigation:q=$latitude,$longitude';
+    String mapUrl =
+        'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
+
+    if (await canLaunch(mapUrl)) {
+      await launch(mapUrl);
+    } else {
+      print('Nie można otworzyć mapy w aplikacji Google Maps');
+    }
+  }
+}
+
+// class MapScreen extends StatelessWidget {
+//   final double latitude;
+//   final double longitude;
+
+//   MapScreen({required this.latitude, required this.longitude});
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       appBar: AppBar(
+//         title: Text('Mapa'),
+//       ),
+//       body: GoogleMap(
+//         initialCameraPosition: CameraPosition(
+//           target: LatLng(latitude, longitude),
+//           zoom: 15.0,
+//         ),
+//         markers: {
+//           Marker(
+//             markerId: MarkerId('Your Location'),
+//             position: LatLng(latitude, longitude),
+//             infoWindow: InfoWindow(title: 'Twoje położenie'),
+//           ),
+//         },
+//       ),
+//     );
+//   }
+// }
 
 class SafePersonalApp extends StatefulWidget {
   final String username;
@@ -194,6 +312,8 @@ class _SafePersonalAppState extends State<SafePersonalApp>
     super.initState();
     _checkLocationPermission();
     _getCurrentLocation();
+
+    _loadTrustedContact();
 
     _checkCameraPermission();
     _initCamera();
@@ -262,6 +382,40 @@ class _SafePersonalAppState extends State<SafePersonalApp>
     return '$degrees° ${minutes.toStringAsFixed(2)}\' $direction';
   }
 
+  // funkcja do otwierania mapy w aplikacji google maps
+  void openMap(double latitude, double longitude) async {
+    String mapUrl =
+        'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
+
+    if (await canLaunch(mapUrl)) {
+      await launch(mapUrl);
+    } else {
+      print('Nie można otworzyć mapy');
+    }
+  }
+
+  // funkcja do wczytania danych do mapy
+  void _openMapWithCurrentLocation() {
+    if (_currentPosition != null) {
+      openMap(_currentPosition!.latitude, _currentPosition!.longitude);
+    } else {
+      print('Brak dostępnej lokalizacji');
+    }
+  }
+
+  // funkcja do otwierania mapy w nowym widoku
+  void openMapScreen(double latitude, double longitude) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MapScreen(
+          latitude: latitude,
+          longitude: longitude,
+        ),
+      ),
+    );
+  }
+
   final TextEditingController _smsController = TextEditingController();
   String defaultSMS = 'To jest przykładowa wiadomość SMS';
 
@@ -305,8 +459,13 @@ class _SafePersonalAppState extends State<SafePersonalApp>
     if (selectedContact != null) {
       String phoneNumber = selectedContact!.phones!.first.value ?? '';
 
-      String message =
-          _smsController.text.isNotEmpty ? _smsController.text : defaultSMS;
+      // Domyślna wiadomość
+      String defaultMessage = 'Potrzebna Pomoc!';
+
+      // Wiadomość wpisana przez użytkownika
+      String userMessage = _smsController.text.isNotEmpty
+          ? _smsController.text
+          : ''; // Lub inna domyślna wartość
 
       // Pobieranie aktualnych współrzędnych
       String latitude = _currentPosition != null
@@ -316,25 +475,20 @@ class _SafePersonalAppState extends State<SafePersonalApp>
           ? getDegreesMinutes(_currentPosition!.longitude, 'longitude')
           : 'Brak danych o lokalizacji';
 
-      // String message = _smsController.text.isNotEmpty
-      //     ? _smsController.text
-      //     : defaultSMS +
-      //         '\nPotrzebne wsparcie\nAktualne współrzędne\nSzerokość: $latitude\nDługość: $longitude';
-      String fullMessage =
-          '$message\nPotrzebne wsparcie\nAktualne współrzędne:\nSzerokość: $latitude\nDługość: $longitude';
+      // Link do Google Maps
+      String googleMapsLink =
+          'https://www.google.com/maps?q=$latitude,$longitude';
 
-      // Dołączenie współrzędnych do treści wiadomości
-      // String fullMessage =
-      //     '$message\n\nPotrzebuje wsparcia\nAktualne wspolrzedne:\nSzerokosc: $latitude\nDlugosc: $longitude';
-      // print('Message: $message');
-      // print('Latitude: $latitude');
-      // print('Longitude: $longitude');
+      // Pełna wiadomość
+      String fullMessage =
+          '$defaultMessage\n$userMessage\nPotrzebne wsparcie\nAktualne współrzędne:\nSzerokość: $latitude\nDługość: $longitude\n$googleMapsLink';
+
       try {
         await platform.invokeMethod('sendSMS', {
           'phoneNumber': phoneNumber,
           'message': fullMessage,
-          // 'message': message,
         });
+
         // Wyślij SMS do wybranego kontaktu
         _showNotification('SMS został wysłany do $phoneNumber');
       } on PlatformException catch (e) {
@@ -345,10 +499,82 @@ class _SafePersonalAppState extends State<SafePersonalApp>
     }
   }
 
+  // Future<void> _sendSms() async {
+  //   if (selectedContact != null) {
+  //     String phoneNumber = selectedContact!.phones!.first.value ?? '';
+
+  //     String message =
+  //         _smsController.text.isNotEmpty ? _smsController.text : defaultSMS;
+
+  //     // Pobieranie aktualnych współrzędnych
+  //     String latitude = _currentPosition != null
+  //         ? getDegreesMinutes(_currentPosition!.latitude, 'latitude')
+  //         : 'Brak danych o lokalizacji';
+  //     String longitude = _currentPosition != null
+  //         ? getDegreesMinutes(_currentPosition!.longitude, 'longitude')
+  //         : 'Brak danych o lokalizacji';
+
+  //     // String message = _smsController.text.isNotEmpty
+  //     //     ? _smsController.text
+  //     //     : defaultSMS +
+  //     //         '\nPotrzebne wsparcie\nAktualne współrzędne\nSzerokość: $latitude\nDługość: $longitude';
+  //     String fullMessage =
+  //         '$message\nPotrzebne wsparcie\nAktualne współrzędne:\nSzerokość: $latitude\nDługość: $longitude';
+
+  //     // Dołączenie współrzędnych do treści wiadomości
+  //     // String fullMessage =
+  //     //     '$message\n\nPotrzebuje wsparcia\nAktualne wspolrzedne:\nSzerokosc: $latitude\nDlugosc: $longitude';
+  //     // print('Message: $message');
+  //     // print('Latitude: $latitude');
+  //     // print('Longitude: $longitude');
+  //     try {
+  //       await platform.invokeMethod('sendSMS', {
+  //         'phoneNumber': phoneNumber,
+  //         'message': fullMessage,
+  //         // 'message': message,
+  //       });
+  //       // Wyślij SMS do wybranego kontaktu
+  //       _showNotification('SMS został wysłany do $phoneNumber');
+  //     } on PlatformException catch (e) {
+  //       print('Błąd wysyłania SMS: $e');
+  //     }
+  //   } else {
+  //     _showNotification('Proszę wybrać kontakt przed wysłaniem SMS.');
+  //   }
+  // }
+
   void _showNotification(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(message),
     ));
+  }
+
+  Future<void> _loadTrustedContact() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? contactId = prefs.getString('trustedContactId');
+
+    if (contactId != null) {
+      Iterable<Contact>? contacts = await ContactsService.getContacts();
+      Contact? trustedContact;
+
+      try {
+        trustedContact = contacts?.firstWhere(
+          (contact) => contact.identifier == contactId,
+        );
+      } catch (e) {
+        // Obsłuż błąd, np. kontakt nie został znaleziony
+        print('Błąd podczas ładowania zaufanego kontaktu: $e');
+      }
+
+      setState(() {
+        selectedContact = trustedContact;
+      });
+    }
+  }
+
+  Future<void> _saveTrustedContact(String contactId) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('trustedContactId', contactId);
   }
 
   Future<void> _pickContact() async {
@@ -363,16 +589,39 @@ class _SafePersonalAppState extends State<SafePersonalApp>
       );
 
       if (selected != null) {
+        await _saveTrustedContact(selected.identifier!);
         setState(() {
           selectedContact = selected;
         });
       }
     } catch (e, stackTrace) {
       print('Wystąpił błąd podczas wybierania kontaktu: $e');
-      print(stackTrace);
-      // Tutaj możesz dodać logikę obsługi błędu, np. wyświetlenie komunikatu dla użytkownika
+      //print(stackTrace);
     }
   }
+
+  // Future<void> _pickContact() async {
+  //   try {
+  //     Iterable<Contact>? contacts = await ContactsService.getContacts();
+
+  //     Contact? selected = await Navigator.push(
+  //       context,
+  //       MaterialPageRoute(
+  //         builder: (context) => ContactListScreen(contacts!),
+  //       ),
+  //     );
+
+  //     if (selected != null) {
+  //       setState(() {
+  //         selectedContact = selected;
+  //       });
+  //     }
+  //   } catch (e, stackTrace) {
+  //     print('Wystąpił błąd podczas wybierania kontaktu: $e');
+  //     print(stackTrace);
+  //     // Tutaj możesz dodać logikę obsługi błędu, np. wyświetlenie komunikatu dla użytkownika
+  //   }
+  // }
   // static const platform =
   //     const MethodChannel('sms_sender_channel'); // Ustawiamy nazwę kanału
 
@@ -496,6 +745,14 @@ class _SafePersonalAppState extends State<SafePersonalApp>
       return; // Jeśli nagrywanie już trwa, nie uruchamiamy kolejnego
     }
 
+    if (_isRecording) {
+      await stop(); // Zatrzymaj bieżące nagrywanie przed rozpoczęciem nowego
+    }
+
+    setState(() {
+      _recordedTime = Duration(); // Zeruj licznik czasu
+    });
+
     _timer = Timer.periodic(Duration(seconds: 1), (Timer timer) {
       setState(() {
         _recordedTime = _recordedTime + Duration(seconds: 1);
@@ -503,35 +760,147 @@ class _SafePersonalAppState extends State<SafePersonalApp>
     });
 
     // await recorder.startRecorder(toFile: 'audio');
+    // Generuj unikalną nazwę pliku na podstawie aktualnego czasu
+    DateTime now = DateTime.now();
+    String fileName =
+        'audio_${now.year}${now.month}${now.day}_${now.hour}${now.minute}${now.second}.m4a';
+
     try {
       await recorder.startRecorder(
-        toFile: 'audio.aac',
+        toFile: fileName,
         codec: Codec.aacMP4,
       );
+
+      setState(() {
+        _isRecording = true;
+      });
     } catch (e) {
       print('Błąd podczas rozpoczynania nagrywania: $e');
       _timer?.cancel();
     }
   }
 
+  Future checkAndRequestStoragePermission() async {
+    var status = await Permission.storage.status;
+    if (!status.isGranted) {
+      status = await Permission.storage.request();
+      if (!status.isGranted) {
+        print('Brak uprawnień do zapisu w pamięci zewnętrznej.');
+      }
+    }
+  }
+
+  List<File> recentRecordings = [];
+
   Future stop() async {
+    // Sprawdź i poproś o uprawnienia przed zapisaniem pliku
+    await checkAndRequestStoragePermission();
+
+    if (!_isRecording) {
+      return; // Jeśli nie nagrywamy, nie ma potrzeby zatrzymywać
+    }
+
     _timer?.cancel(); // Zatrzymaj stoper po zakończeniu nagrywania
-    await recorder.stopRecorder();
+    //await recorder.stopRecorder();
 
     // Pobierz ścieżkę nagrania
     String? path = await recorder.stopRecorder();
 
     // Pobierz katalog tymczasowy
-    Directory appDocDir = await getTemporaryDirectory();
+    //Directory appDocDir = await getTemporaryDirectory();
+    // Directory appDocDir = await getApplicationDocumentsDirectory();
+    // String appDocPath = appDocDir.path;
+    if (path == null) {
+      print('Błąd: Ścieżka po zakończeniu nagrywania jest pusta.');
+      return;
+    }
+
+    Directory? appDocDir = await getExternalStorageDirectory();
+    if (appDocDir == null) {
+      print('Błąd: Brak dostępu do katalogu zewnętrznego.');
+      return;
+    }
     String appDocPath = appDocDir.path;
 
-    // Przenieś plik nagrania do docelowej lokalizacji (np. katalogu cache)
-    File recordedFile = File('$appDocPath/audio.aac');
-    if (await File(path!).exists()) {
-      await File(path).copy(recordedFile.path);
-    } else {
-      print('Plik nie istnieje.');
+    // Use getExternalStorageDirectory() instead of getApplicationDocumentsDirectory()
+    // Directory? appDocDir = await getExternalStorageDirectory();
+    // String appDocPath = appDocDir!.path;
+
+    // Katalog "recordings" wewnątrz katalogu dokumentów
+    // String recordingsPath = '$appDocPath/Recordings';
+    // Katalog "Recordings" wewnątrz katalogu dostępnego publicznie
+    // Uzyskaj katalog dostępny publicznie
+    Directory? publicDir = await getExternalStorageDirectory();
+
+    if (publicDir == null) {
+      print('Błąd: Brak dostępu do katalogu zewnętrznego.');
+      return;
     }
+    String recordingsPath = '${publicDir.path}/Recordings';
+
+    // Utwórz katalog "Recordings", jeśli nie istnieje
+    Directory(recordingsPath).createSync(recursive: true);
+
+    // Utwórz katalog "recordings", jeśli nie istnieje
+    Directory(recordingsPath).createSync(recursive: true);
+
+    // Utwórz unikalną nazwę pliku w katalogu "recordings"
+    DateTime now = DateTime.now();
+    String fileName =
+        'audio_${now.year}${now.month}${now.day}_${now.hour}${now.minute}${now.second}.m4a';
+
+    // Przenieś plik nagrania do docelowej lokalizacji (np. katalogu cache)
+    File recordedFile = File('$recordingsPath/$fileName'); //appDocDir
+    if (await File(path!).exists()) {
+      print('Ścieżka przed kopiowaniem: $path');
+      await File(path).copy(recordedFile.path);
+      print('Ścieżka po kopiowaniu: ${recordedFile.path}');
+      // } else {
+      //   print('Plik nie istnieje.');
+      // }
+
+      // Sprawdź, czy plik faktycznie istnieje po skopiowaniu
+      if (await recordedFile.exists()) {
+        print('Plik został poprawnie zapisany w: ${recordedFile.path}');
+      } else {
+        print('Błąd: Plik nie został skopiowany do katalogu dokumentów.');
+      }
+    } else {
+      print('Błąd: Plik źródłowy nie istnieje.');
+    }
+
+    try {
+      await File(path!).copy(recordedFile.path);
+      print('File copied successfully to: ${recordedFile.path}');
+      // // Open the file using the open_file plugin
+      // OpenFile.open(recordedFile.path);
+      // Dodaj nowe nagranie do listy recentRecordings
+      setState(() {
+        recentRecordings.insert(0, recordedFile);
+        if (recentRecordings.length > 5) {
+          recentRecordings
+              .removeLast(); // Usuń najstarsze nagranie, jeśli jest więcej niż 5
+        }
+      });
+
+      // Otwórz ekran "music" po zakończeniu nagrywania
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => MusicScreen(
+            recentRecordings: recentRecordings
+                .map((file) => file.path)
+                .toList(), // Konwersja na List<String>
+          ),
+        ),
+      );
+    } catch (e) {
+      print('Error copying file: $e');
+    }
+
+    setState(() {
+      _isRecording = false;
+    });
   }
 
   @override
@@ -564,64 +933,127 @@ class _SafePersonalAppState extends State<SafePersonalApp>
               ),
             ),
             SizedBox(height: 16.0),
-            Container(
-              height: 100.0,
-              decoration: BoxDecoration(
-                border: Border.all(),
-                borderRadius: BorderRadius.circular(8.0),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Twoje położenie',
-                    style: TextStyle(fontSize: 16.0),
-                  ),
-                  SizedBox(height: 8.0),
-                  _currentPosition != null
-                      ? Column(
-                          children: [
-                            // Text(
-                            //   'Szerokość: ${_currentPosition!.latitude}',
-                            // ),
-                            Text(
-                              'Szerokość: ${getDegreesMinutes(_currentPosition!.latitude, 'latitude')}',
-                            ),
-                            // Text(
-                            //   'Długość: ${_currentPosition!.longitude}',
-                            // ),
-                            Text(
-                              'Długość: ${getDegreesMinutes(_currentPosition!.longitude, 'longitude')}',
-                            ),
-                          ],
-                        )
-                      : CircularProgressIndicator(),
-                ],
-              ),
-            ),
-            SizedBox(height: 16.0),
-            // ElevatedButton(
-            //   // onPressed: () {
-            //   //   // Implementacja wysyłania SMS-a
-            //   // },
-            //   onPressed: _sendSms,
-            //   child: Text('Wyślij SMS'),
-            // ),
-            // SizedBox(height: 8.0),
-            // TextField(
-            //   decoration: InputDecoration(
-            //     hintText: 'Wpisz wiadomość SMS...',
-            //     border: OutlineInputBorder(),
-
+            // InkWell(
+            //   onTap: () {
+            //     _openMapWithCurrentLocation();
+            //   },
+            //   child: Container(
+            //     height: 100.0,
+            //     decoration: BoxDecoration(
+            //       border: Border.all(),
+            //       borderRadius: BorderRadius.circular(8.0),
+            //     ),
+            //     child: Column(
+            //       mainAxisAlignment: MainAxisAlignment.center,
+            //       children: [
+            //         Text(
+            //           'Twoje położenie',
+            //           style: TextStyle(fontSize: 16.0),
+            //         ),
+            //         SizedBox(height: 8.0),
+            //         _currentPosition != null
+            //             ? Column(
+            //                 children: [
+            //                   // Text(
+            //                   //   'Szerokość: ${_currentPosition!.latitude}',
+            //                   // ),
+            //                   Text(
+            //                     'Szerokość: ${getDegreesMinutes(_currentPosition!.latitude, 'latitude')}',
+            //                   ),
+            //                   // Text(
+            //                   //   'Długość: ${_currentPosition!.longitude}',
+            //                   // ),
+            //                   Text(
+            //                     'Długość: ${getDegreesMinutes(_currentPosition!.longitude, 'longitude')}',
+            //                   ),
+            //                 ],
+            //               )
+            //             : CircularProgressIndicator(),
+            //         SizedBox(height: 8.0),
+            //         Text(
+            //           'Kliknij, by zobaczyć mapę',
+            //           style: TextStyle(fontSize: 12.0),
+            //         ),
+            //       ],
+            //     ),
             //   ),
             // ),
-            SizedBox(height: 16.0),
-            ElevatedButton(
-              onPressed: () => _sendSms(),
-              // onPressed: _sendSms,
-              child: Text('Wyślij SMS'),
+
+            InkWell(
+              onTap: () {
+                if (_currentPosition != null) {
+                  openMapScreen(
+                    _currentPosition!.latitude,
+                    _currentPosition!.longitude,
+                  );
+                } else {
+                  print('Brak dostępnej lokalizacji');
+                }
+              },
+              child: Container(
+                height: 100.0,
+                decoration: BoxDecoration(
+                  border: Border.all(),
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Twoje położenie 🌍',
+                      style: TextStyle(fontSize: 16.0),
+                    ),
+                    SizedBox(height: 8.0),
+                    _currentPosition != null
+                        ? Column(
+                            children: [
+                              // Text(
+                              //   'Szerokość: ${_currentPosition!.latitude}',
+                              // ),
+                              Text(
+                                'Szerokość: ${getDegreesMinutes(_currentPosition!.latitude, 'latitude')}',
+                              ),
+                              // Text(
+                              //   'Długość: ${_currentPosition!.longitude}',
+                              // ),
+                              Text(
+                                'Długość: ${getDegreesMinutes(_currentPosition!.longitude, 'longitude')}',
+                              ),
+                            ],
+                          )
+                        : CircularProgressIndicator(),
+                    SizedBox(height: 8.0),
+                    Text(
+                      'Kliknij, by zobaczyć mapę',
+                      style: TextStyle(fontSize: 12.0),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            SizedBox(height: 8.0),
+
+            SizedBox(height: 16.0),
+
+            ButtonBar(
+              alignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton(
+                  onPressed: () => _sendSms(),
+                  style: ElevatedButton.styleFrom(
+                    primary: Colors.red,
+                    onPrimary: Colors.white,
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 64.0, vertical: 16.0),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                    ),
+                  ),
+                  child: Text('Wyślij SMS'),
+                ),
+              ],
+            ),
+
+            SizedBox(height: 16.0),
             TextField(
               controller: _smsController,
               decoration: InputDecoration(
@@ -629,195 +1061,241 @@ class _SafePersonalAppState extends State<SafePersonalApp>
                 border: OutlineInputBorder(),
               ),
             ),
-            SizedBox(height: 16.0),
-            if (selectedContact != null)
-              Text(
-                'Zaufany kontakt: ${selectedContact!.displayName ?? ''}',
-                style: TextStyle(fontSize: 16.0),
-              ),
-            SizedBox(height: 16.0),
-            ElevatedButton(
-              onPressed: _pickContact,
-              child: Text('Wybierz kontakt'),
-            ),
-
-            SizedBox(height: 16.0),
-            Center(
-              child: Text(
-                'Szybkie akcje',
-                style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
-              ),
-            ),
+            SizedBox(height: 8.0),
             Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: () {
-                      _toggleFlashlight();
-                    },
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        AnimatedContainer(
-                          padding: EdgeInsets.symmetric(vertical: 24.0),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8.0),
-                            gradient: _isFlashOn
-                                ? LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [Colors.yellow, Colors.amber],
-                                  )
-                                : null,
-                            color: _flashButtonColor,
-                          ),
-                          duration: Duration(milliseconds: 300),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.flashlight_on,
-                                color: Colors.black,
-                              ),
-                              SizedBox(width: 8.0),
-                              Text(
-                                'Latarka',
-                                style: TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (_isFlashOn)
-                          Positioned(
-                            bottom: 0,
-                            child: Container(
-                              padding: EdgeInsets.symmetric(
-                                  vertical: 4.0, horizontal: 8.0),
-                              decoration: BoxDecoration(
-                                color: Colors.black,
-                                borderRadius: BorderRadius.only(
-                                  bottomLeft: Radius.circular(8.0),
-                                  bottomRight: Radius.circular(8.0),
-                                ),
-                              ),
-                              child: Text(
-                                'włączona',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    style: ButtonStyle(
-                      overlayColor: MaterialStateProperty.resolveWith<Color?>(
-                        (Set<MaterialState> states) {
-                          return states.contains(MaterialState.pressed)
-                              ? Colors.transparent
-                              : null;
-                        },
+                if (selectedContact != null)
+                  Expanded(
+                    child: Container(
+                      margin:
+                          EdgeInsets.only(left: 8.0), // margines z lewej strony
+                      child: Text(
+                        'Zaufany kontakt: ${selectedContact!.displayName ?? ''}',
+                        style: TextStyle(fontSize: 16.0),
                       ),
                     ),
                   ),
-                ),
-                SizedBox(height: 16.0),
-                Expanded(
-                  child: TextButton(
-                    onPressed: () async {
-                      try {
-                        await initRecorder(); // Inicjalizacja przed rozpoczęciem nagrywania
-
-                        if (recorder.isRecording) {
-                          await stop();
-                        } else {
-                          await record();
-                        }
-                      } catch (e) {
-                        print(
-                            'Error: $e'); // Obsługa błędu inicjalizacji rekordera
-                      }
-                    },
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        AnimatedContainer(
-                          padding: EdgeInsets.symmetric(vertical: 24.0),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8.0),
-                            color: _isRecording ? Colors.red : Colors.orange,
-                          ),
-                          duration: Duration(milliseconds: 300),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.mic,
-                                color: Colors.black,
-                              ),
-                              SizedBox(height: 8.0),
-                              Text(
-                                _isRecording ? 'Nagrywanie' : 'Nagraj',
-                                style: TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              if (_isRecording) SizedBox(height: 4.0),
-                              if (_isRecording)
-                                Text(
-                                  '${_recordedTime.inHours.toString().padLeft(2, '0')}:${(_recordedTime.inMinutes % 60).toString().padLeft(2, '0')}:${(_recordedTime.inSeconds % 60).toString().padLeft(2, '0')}',
-                                  style: TextStyle(
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        if (_isRecording)
-                          Positioned(
-                            bottom: 0,
-                            child: Container(
-                              padding: EdgeInsets.symmetric(
-                                  vertical: 4.0, horizontal: 8.0),
-                              decoration: BoxDecoration(
-                                color: Colors.black,
-                                borderRadius: BorderRadius.only(
-                                  bottomLeft: Radius.circular(8.0),
-                                  bottomRight: Radius.circular(8.0),
-                                ),
-                              ),
-                              child: Text(
-                                'włączone',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    style: ButtonStyle(
-                      overlayColor: MaterialStateProperty.resolveWith<Color?>(
-                        (Set<MaterialState> states) {
-                          return states.contains(MaterialState.pressed)
-                              ? Colors.transparent
-                              : null;
-                        },
-                      ),
-                    ),
-                  ),
+                ElevatedButton(
+                  onPressed: _pickContact,
+                  child: Text('Zmień kontakt'),
                 ),
               ],
             ),
 
-            SizedBox(height: 16.0),
+            SizedBox(height: 8.0),
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: Color.fromARGB(255, 0, 0, 0)!, // Kolor obramówki
+                  width: 1.0, // Szerokość obramówki
+                ),
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+              padding: EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Text(
+                      'Szybkie akcje 🚨',
+                      style: TextStyle(
+                          fontSize: 18.0, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  SizedBox(height: 16.0),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () {
+                            _toggleFlashlight();
+                          },
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              AnimatedContainer(
+                                padding: EdgeInsets.symmetric(vertical: 24.0),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8.0),
+                                  gradient: _isFlashOn
+                                      ? LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [Colors.yellow, Colors.amber],
+                                        )
+                                      : null,
+                                  color: _flashButtonColor,
+                                ),
+                                duration: Duration(milliseconds: 300),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.flashlight_on,
+                                      color: Colors.black,
+                                    ),
+                                    SizedBox(width: 8.0),
+                                    Text(
+                                      'Latarka',
+                                      style: TextStyle(
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_isFlashOn)
+                                Positioned(
+                                  bottom: 0,
+                                  child: Container(
+                                    padding: EdgeInsets.symmetric(
+                                        vertical: 4.0, horizontal: 8.0),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black,
+                                      borderRadius: BorderRadius.only(
+                                        bottomLeft: Radius.circular(8.0),
+                                        bottomRight: Radius.circular(8.0),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'włączona',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          style: ButtonStyle(
+                            overlayColor:
+                                MaterialStateProperty.resolveWith<Color?>(
+                              (Set<MaterialState> states) {
+                                return states.contains(MaterialState.pressed)
+                                    ? Colors.transparent
+                                    : null;
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 16.0),
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () async {
+                            try {
+                              await initRecorder(); // Inicjalizacja przed rozpoczęciem nagrywania
+
+                              if (recorder.isRecording) {
+                                await stop();
+                              } else {
+                                await record();
+                              }
+                            } catch (e) {
+                              print(
+                                  'Error: $e'); // Obsługa błędu inicjalizacji rekordera
+                            }
+                          },
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              AnimatedContainer(
+                                padding: EdgeInsets.symmetric(
+                                    vertical: 22.0, horizontal: 24.0),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8.0),
+                                  color:
+                                      _isRecording ? Colors.red : Colors.orange,
+                                ),
+                                duration: Duration(milliseconds: 300),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.mic,
+                                      color: Colors.black,
+                                    ),
+                                    // SizedBox(height: 8.0),
+                                    Text(
+                                      _isRecording ? 'Nagrywanie' : 'Nagraj',
+                                      style: TextStyle(
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    if (_isRecording) SizedBox(height: 4.0),
+                                    if (_isRecording)
+                                      Text(
+                                        '${_recordedTime.inHours.toString().padLeft(2, '0')}:${(_recordedTime.inMinutes % 60).toString().padLeft(2, '0')}:${(_recordedTime.inSeconds % 60).toString().padLeft(2, '0')}',
+                                        style: TextStyle(
+                                          color: Colors.black,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              if (_isRecording)
+                                Positioned(
+                                  bottom: 0,
+                                  child: Container(
+                                    padding: EdgeInsets.symmetric(
+                                        vertical: 4.0, horizontal: 8.0),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black,
+                                      borderRadius: BorderRadius.only(
+                                        bottomLeft: Radius.circular(8.0),
+                                        bottomRight: Radius.circular(8.0),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'włączone',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          style: ButtonStyle(
+                            overlayColor:
+                                MaterialStateProperty.resolveWith<Color?>(
+                              (Set<MaterialState> states) {
+                                return states.contains(MaterialState.pressed)
+                                    ? Colors.transparent
+                                    : null;
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            SizedBox(height: 8.0),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MusicScreen(
+                      recentRecordings: recentRecordings
+                          .map((file) => file.path)
+                          .toList(), // Konwersja na List<String>
+                    ),
+                  ),
+                );
+              },
+              child: Text('Ostatnie nagrania'),
+            ),
             // Odtwarzacz dźwięku
             // Tutaj można dodać widgety do odtwarzania dźwięku
             // Przycisk "Wyloguj się"
@@ -834,6 +1312,197 @@ class _SafePersonalAppState extends State<SafePersonalApp>
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class MusicScreen extends StatefulWidget {
+  final List<String> recentRecordings;
+
+  MusicScreen({required this.recentRecordings});
+
+  @override
+  _MusicScreenState createState() => _MusicScreenState();
+}
+
+class _MusicScreenState extends State<MusicScreen> {
+  late just_audio.AudioPlayer _audioPlayer;
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _audioPlayer = just_audio.AudioPlayer();
+    _initPlayer();
+  }
+
+  // Future<void> _initPlayer() async {
+  //   await _audioPlayer.setFilePath(widget.recentRecordings[_currentIndex]);
+
+  //   _audioPlayer.positionStream.listen((Duration position) {
+  //     setState(() {
+  //       // Update UI with the current playback position
+  //     });
+  //   });
+
+  //   _audioPlayer.durationStream.listen((Duration? duration) {
+  //     setState(() {
+  //       // Update UI with the current duration
+  //     });
+  //   });
+  // }
+  Future<void> _initPlayer() async {
+    if (widget.recentRecordings.isNotEmpty) {
+      await _audioPlayer.setFilePath(widget.recentRecordings[_currentIndex]);
+
+      _audioPlayer.positionStream.listen((Duration position) {
+        setState(() {});
+      });
+
+      _audioPlayer.durationStream.listen((Duration? duration) {
+        setState(() {});
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _playPause() async {
+    if (_audioPlayer.playing) {
+      await _audioPlayer.pause();
+    } else {
+      await _audioPlayer.play();
+    }
+  }
+
+  Future<void> _stop() async {
+    await _audioPlayer.stop();
+  }
+
+  Future<void> _previous() async {
+    if (_currentIndex > 0) {
+      setState(() {
+        _currentIndex--;
+      });
+      await _audioPlayer.setFilePath(widget.recentRecordings[_currentIndex]);
+      await _audioPlayer.play();
+    }
+  }
+
+  Future<void> _next() async {
+    if (_currentIndex < widget.recentRecordings.length - 1) {
+      setState(() {
+        _currentIndex++;
+      });
+      await _audioPlayer.setFilePath(widget.recentRecordings[_currentIndex]);
+      await _audioPlayer.play();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Recent Recordings'),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: widget.recentRecordings.isNotEmpty
+                ? ListView.builder(
+                    itemCount: widget.recentRecordings.length,
+                    itemBuilder: (context, index) {
+                      return ListTile(
+                        title: Text('Recording ${index + 1}'),
+                        onTap: () async {
+                          await _audioPlayer.stop();
+                          setState(() {
+                            _currentIndex = index;
+                          });
+                          await _audioPlayer.setFilePath(
+                              widget.recentRecordings[_currentIndex]);
+                          await _audioPlayer.play();
+                        },
+                      );
+                    },
+                  )
+                : Center(
+                    child: Text(
+                      'Brak aktualnych nagran',
+                      style: TextStyle(fontSize: 18),
+                    ),
+                  ),
+          ),
+          if (widget.recentRecordings.isNotEmpty)
+            Container(
+              color: Colors.black,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Column(
+                      children: [
+                        Text(
+                          'Now Playing: ${widget.recentRecordings[_currentIndex]}',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        StreamBuilder<Duration?>(
+                          stream: _audioPlayer.positionStream,
+                          builder: (context, snapshot) {
+                            final position = snapshot.data ?? Duration.zero;
+                            return Text(
+                              '${_audioPlayer.position.inMinutes}:${(_audioPlayer.position.inSeconds % 60).toString().padLeft(2, '0')} / ${_audioPlayer.duration != null ? _audioPlayer.duration!.inMinutes : 0}:${(_audioPlayer.duration != null ? _audioPlayer.duration!.inSeconds % 60 : 0).toString().padLeft(2, '0')}',
+                              style: TextStyle(color: Colors.white),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  Slider(
+                    value: _audioPlayer.position.inSeconds.toDouble(),
+                    max: _audioPlayer.duration?.inSeconds.toDouble() ?? 0,
+                    onChanged: (value) {
+                      _audioPlayer.seek(Duration(seconds: value.toInt()));
+                    },
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.skip_previous),
+                        onPressed: _previous,
+                        color: Colors.white,
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          _audioPlayer.playing ? Icons.pause : Icons.play_arrow,
+                        ),
+                        onPressed: _playPause,
+                        color: Colors.white,
+                        iconSize: 36.0,
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.stop),
+                        onPressed: _stop,
+                        color: Colors.white,
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.skip_next),
+                        onPressed: _next,
+                        color: Colors.white,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
