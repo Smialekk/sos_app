@@ -1,33 +1,21 @@
 import 'dart:async';
-
-import 'package:audioplayers/audioplayers.dart';
 import 'package:contacts_service/contacts_service.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:media_scanner/media_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
-// import 'package:torch_light/torch_light.dart';
-// import 'package:flashlight/flashlight.dart';
 import 'package:flutter/services.dart';
-// import 'package:torch_controller/torch_controller.dart';
 import 'package:camera/camera.dart';
-//import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
-import 'package:timer_builder/timer_builder.dart';
 import 'package:just_audio/just_audio.dart' as just_audio;
 import 'package:audioplayers/audioplayers.dart' as audioplayers;
 import 'package:flutter_sound/flutter_sound.dart';
-// import 'package:microphone/microphone.dart' as mic;
-import 'package:record/record.dart';
-// import 'package:flutter_sms/flutter_sms.dart';
-// import 'package:sms_maintained/sms.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_map/flutter_map.dart';
 import "package:latlong2/latlong.dart" as latLng;
-// import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:open_file/open_file.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:math' as math;
+import 'package:flutter_compass/flutter_compass.dart';
 
 void main() {
   runApp(MyApp());
@@ -164,42 +152,46 @@ class MapScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text('Mapa 🗺'),
       ),
-      body: FlutterMap(
-        options: MapOptions(
-          center: latLng.LatLng(latitude, longitude),
-          zoom: 15.0,
-        ),
+      body: Stack(
         children: [
-          TileLayer(
-            urlTemplate: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-            subdomains: ['a', 'b', 'c'],
-          ),
-          MarkerLayer(
-            markers: [
-              Marker(
-                width: 40.0,
-                height: 40.0,
-                point: latLng.LatLng(latitude, longitude),
-                builder: (ctx) => Container(
-                  child: Icon(
-                    Icons.location_pin,
-                    color: Colors.red,
-                    size: 40.0,
+          FlutterMap(
+            options: MapOptions(
+              center: latLng.LatLng(latitude, longitude),
+              zoom: 15.0,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate:
+                    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                subdomains: ['a', 'b', 'c'],
+              ),
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    width: 40.0,
+                    height: 40.0,
+                    point: latLng.LatLng(latitude, longitude),
+                    builder: (ctx) => Container(
+                      child: Icon(
+                        Icons.location_pin,
+                        color: Colors.red,
+                        size: 40.0,
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
-          // Dodaj przycisk do otwierania mapy w aplikacji Google Maps
-          Align(
-            alignment: Alignment.topRight,
+          // Przycisk do otwierania mapy w aplikacji Google Maps
+          Positioned(
+            top: 16.0,
+            right: 16.0,
             child: GestureDetector(
               onTap: () {
                 _openMapWithGoogleMapsApp(latitude, longitude);
               },
               child: Container(
-                margin: EdgeInsets.all(
-                    16.0), // Dodaj margines dla dodatkowego miejsca
                 padding: EdgeInsets.all(8.0),
                 color: Colors.blue,
                 child: Text(
@@ -231,34 +223,60 @@ class MapScreen extends StatelessWidget {
   }
 }
 
-// class MapScreen extends StatelessWidget {
-//   final double latitude;
-//   final double longitude;
+class CompassWidget extends StatefulWidget {
+  @override
+  _CompassWidgetState createState() => _CompassWidgetState();
+}
 
-//   MapScreen({required this.latitude, required this.longitude});
+class _CompassWidgetState extends State<CompassWidget> {
+  double _direction = 0.0;
+  bool _hasError = false;
 
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       appBar: AppBar(
-//         title: Text('Mapa'),
-//       ),
-//       body: GoogleMap(
-//         initialCameraPosition: CameraPosition(
-//           target: LatLng(latitude, longitude),
-//           zoom: 15.0,
-//         ),
-//         markers: {
-//           Marker(
-//             markerId: MarkerId('Your Location'),
-//             position: LatLng(latitude, longitude),
-//             infoWindow: InfoWindow(title: 'Twoje położenie'),
-//           ),
-//         },
-//       ),
-//     );
-//   }
-// }
+  @override
+  void initState() {
+    super.initState();
+    FlutterCompass.events?.listen((CompassEvent event) {
+      setState(() {
+        _direction = event.heading ?? 0;
+      });
+    }, onError: (dynamic ex) {
+      setState(() {
+        _hasError = true;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hasError) {
+      return Center(
+        child: Text("Błąd odczytu kompasu"),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Color.fromARGB(255, 0, 0, 0),
+      appBar: AppBar(
+        title: Text("Kompas"),
+      ),
+      body: Center(
+        child: Transform.rotate(
+          angle: ((_direction ?? 0) * (math.pi / 180) * -1),
+          child: Container(
+            width: 300,
+            height: 300,
+            decoration: BoxDecoration(
+              image: DecorationImage(
+                image: AssetImage('assets/compass_icon.png'),
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class SafePersonalApp extends StatefulWidget {
   final String username;
@@ -293,15 +311,10 @@ class _SafePersonalAppState extends State<SafePersonalApp>
   late bool _isPlaying;
   late String _recordingPath;
   late DateTime _startTime;
-  Contact? selectedContact; // Zmienna przechowująca wybrany kontakt
-
-  //late Contact? selectedContact; // Zmienna przechowująca wybrany kontakt
+  Contact? selectedContact;
 
   late FlutterSoundRecorder _audioRecorder;
   final recorder = FlutterSoundRecorder();
-
-  // Duration _recordedTime = Duration.zero;
-  // Timer? _timer;
 
   Timer? _timer;
 
@@ -320,26 +333,16 @@ class _SafePersonalAppState extends State<SafePersonalApp>
     _isFlashOn = false;
 
     _audioRecorder = FlutterSoundRecorder();
-    //_initAudio();
 
     _isRecording = false;
-    _flashButtonColor = Colors.grey;
+    _flashButtonColor = const Color.fromARGB(255, 255, 152, 0);
     _animationController = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: 2000),
     );
 
-    _colorAnimation = ColorTween(
-      begin: Colors.grey,
-      end: Colors.yellow,
-    ).animate(_animationController);
-
     _player = just_audio.AudioPlayer();
-    // _recorder = just_audio.AudioRecorder();
-    // _recorder = AudioRecorder();
-    // _audioSource = AudioSource();
 
-    // _audioPlayer = AudioPlayer();
     _isPlaying = false;
     _recordingPath = '';
   }
@@ -421,72 +424,35 @@ class _SafePersonalAppState extends State<SafePersonalApp>
 
   static const platform = const MethodChannel('sms_sender_channel');
 
-  // Future<void> _sendSms() async {
-  //   if (selectedContact != null) {
-  //     String phoneNumber = selectedContact!.phones!.first.value ?? '';
-
-  //     String message =
-  //         _smsController.text.isNotEmpty ? _smsController.text : defaultSMS;
-
-  //     // Pobieranie aktualnych współrzędnych
-  //     String latitude = _currentPosition != null
-  //         ? getDegreesMinutes(_currentPosition!.latitude, 'latitude')
-  //         : 'Brak danych o lokalizacji';
-  //     String longitude = _currentPosition != null
-  //         ? getDegreesMinutes(_currentPosition!.longitude, 'longitude')
-  //         : 'Brak danych o lokalizacji';
-
-  //     // Dołączenie współrzędnych do wiadomości
-  //     String fullMessage =
-  //         '$message\n\nPotrzebuje wsparcia\nAktualne współrzędne:\nLatitude: $latitude\nLongitude: $longitude';
-
-  //     try {
-  //       await platform.invokeMethod('sendSMS', {
-  //         'phoneNumber': phoneNumber,
-  //         'message': fullMessage,
-  //       });
-  //       // Wyślij SMS do wybranego kontaktu
-  //       _showNotification('SMS został wysłany do $phoneNumber');
-  //     } on PlatformException catch (e) {
-  //       print('Błąd wysyłania SMS: $e');
-  //     }
-  //   } else {
-  //     _showNotification('Proszę wybrać kontakt przed wysłaniem SMS.');
-  //   }
-  // }
-
   Future<void> _sendSms() async {
     if (selectedContact != null) {
       String phoneNumber = selectedContact!.phones!.first.value ?? '';
 
-      // Domyślna wiadomość
-      String defaultMessage = 'Potrzebna Pomoc!';
+      String userMessage = _smsController.text;
 
-      // Wiadomość wpisana przez użytkownika
-      String userMessage = _smsController.text.isNotEmpty
-          ? _smsController.text
-          : ''; // Lub inna domyślna wartość
+      double? latitude = _currentPosition?.latitude;
+      double? longitude = _currentPosition?.longitude;
 
-      // Pobieranie aktualnych współrzędnych
-      String latitude = _currentPosition != null
-          ? getDegreesMinutes(_currentPosition!.latitude, 'latitude')
-          : 'Brak danych o lokalizacji';
-      String longitude = _currentPosition != null
-          ? getDegreesMinutes(_currentPosition!.longitude, 'longitude')
-          : 'Brak danych o lokalizacji';
+      String latitudeString =
+          latitude != null ? '$latitude' : 'Brak danych o lokalizacji';
+      String longitudeString =
+          longitude != null ? '$longitude' : 'Brak danych o lokalizacji';
 
-      // Link do Google Maps
-      String googleMapsLink =
-          'https://www.google.com/maps?q=$latitude,$longitude';
+      String mapUrl =
+          'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
 
       // Pełna wiadomość
-      String fullMessage =
-          '$defaultMessage\n$userMessage\nPotrzebne wsparcie\nAktualne współrzędne:\nSzerokość: $latitude\nDługość: $longitude\n$googleMapsLink';
+      String fullMessage = userMessage.isNotEmpty
+          ? '$userMessage\nPotrzebna pomoc!, Tu jestem: $mapUrl'
+          : 'Potrzebna pomoc!, Tu jestem: $mapUrl';
 
       try {
         await platform.invokeMethod('sendSMS', {
           'phoneNumber': phoneNumber,
+          // 'message': userMessage,
           'message': fullMessage,
+          'latitude': latitudeString,
+          'longitude': longitudeString,
         });
 
         // Wyślij SMS do wybranego kontaktu
@@ -498,50 +464,6 @@ class _SafePersonalAppState extends State<SafePersonalApp>
       _showNotification('Proszę wybrać kontakt przed wysłaniem SMS.');
     }
   }
-
-  // Future<void> _sendSms() async {
-  //   if (selectedContact != null) {
-  //     String phoneNumber = selectedContact!.phones!.first.value ?? '';
-
-  //     String message =
-  //         _smsController.text.isNotEmpty ? _smsController.text : defaultSMS;
-
-  //     // Pobieranie aktualnych współrzędnych
-  //     String latitude = _currentPosition != null
-  //         ? getDegreesMinutes(_currentPosition!.latitude, 'latitude')
-  //         : 'Brak danych o lokalizacji';
-  //     String longitude = _currentPosition != null
-  //         ? getDegreesMinutes(_currentPosition!.longitude, 'longitude')
-  //         : 'Brak danych o lokalizacji';
-
-  //     // String message = _smsController.text.isNotEmpty
-  //     //     ? _smsController.text
-  //     //     : defaultSMS +
-  //     //         '\nPotrzebne wsparcie\nAktualne współrzędne\nSzerokość: $latitude\nDługość: $longitude';
-  //     String fullMessage =
-  //         '$message\nPotrzebne wsparcie\nAktualne współrzędne:\nSzerokość: $latitude\nDługość: $longitude';
-
-  //     // Dołączenie współrzędnych do treści wiadomości
-  //     // String fullMessage =
-  //     //     '$message\n\nPotrzebuje wsparcia\nAktualne wspolrzedne:\nSzerokosc: $latitude\nDlugosc: $longitude';
-  //     // print('Message: $message');
-  //     // print('Latitude: $latitude');
-  //     // print('Longitude: $longitude');
-  //     try {
-  //       await platform.invokeMethod('sendSMS', {
-  //         'phoneNumber': phoneNumber,
-  //         'message': fullMessage,
-  //         // 'message': message,
-  //       });
-  //       // Wyślij SMS do wybranego kontaktu
-  //       _showNotification('SMS został wysłany do $phoneNumber');
-  //     } on PlatformException catch (e) {
-  //       print('Błąd wysyłania SMS: $e');
-  //     }
-  //   } else {
-  //     _showNotification('Proszę wybrać kontakt przed wysłaniem SMS.');
-  //   }
-  // }
 
   void _showNotification(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -600,90 +522,6 @@ class _SafePersonalAppState extends State<SafePersonalApp>
     }
   }
 
-  // Future<void> _pickContact() async {
-  //   try {
-  //     Iterable<Contact>? contacts = await ContactsService.getContacts();
-
-  //     Contact? selected = await Navigator.push(
-  //       context,
-  //       MaterialPageRoute(
-  //         builder: (context) => ContactListScreen(contacts!),
-  //       ),
-  //     );
-
-  //     if (selected != null) {
-  //       setState(() {
-  //         selectedContact = selected;
-  //       });
-  //     }
-  //   } catch (e, stackTrace) {
-  //     print('Wystąpił błąd podczas wybierania kontaktu: $e');
-  //     print(stackTrace);
-  //     // Tutaj możesz dodać logikę obsługi błędu, np. wyświetlenie komunikatu dla użytkownika
-  //   }
-  // }
-  // static const platform =
-  //     const MethodChannel('sms_sender_channel'); // Ustawiamy nazwę kanału
-
-  // Future<void> _sendSms() async {
-  //   try {
-  //     await platform.invokeMethod('sendSMS', {
-  //       'phoneNumber': '+48 123 456 789', // Zmień na docelowy numer telefonu
-  //       'message': 'To jest wiadomość SMS wysłana z aplikacji Flutter!'
-  //     });
-  //   } on PlatformException catch (e) {
-  //     print('Błąd wysyłania SMS: $e');
-  //   }
-  // }
-
-  // Future<void> _selectContact() async {
-  //   Contact? contact = await showModalBottomSheet<Contact>(
-  //     context: context,
-  //     builder: (BuildContext context) {
-  //       return ContactListPicker(); // Tutaj będzie lista kontaktów do wyboru
-  //     },
-  //   );
-
-  //   if (contact != null) {
-  //     setState(() {
-  //       selectedContact = contact;
-  //     });
-  //   }
-  // }
-
-  // Future<void> _sendSms() async {
-  //   if (selectedContact != null) {
-  //     String phoneNumber = selectedContact!.phones!.first.value ?? '';
-
-  //     try {
-  //       SmsSender sender = new SmsSender();
-  //       SmsMessage message = new SmsMessage(phoneNumber, messageText);
-
-  //       await sender.sendSms(message);
-
-  //       // Wysłanie wiadomości SMS do wybranego kontaktu
-  //     } catch (error) {
-  //       print('Błąd wysyłania SMS: $error');
-  //     }
-  //   } else {
-  //     showDialog(
-  //       context: context,
-  //       builder: (BuildContext context) {
-  //         return AlertDialog(
-  //           title: Text('Brak kontaktu'),
-  //           content: Text('Wybierz kontakt przed wysłaniem SMS.'),
-  //           actions: [
-  //             TextButton(
-  //               onPressed: () => Navigator.pop(context),
-  //               child: Text('OK'),
-  //             ),
-  //           ],
-  //         );
-  //       },
-  //     );
-  //   }
-  // }
-
   // Metoda do pozyskania uprawnien kamery
   void _checkCameraPermission() async {
     if (await Permission.camera.isDenied) {
@@ -718,8 +556,8 @@ class _SafePersonalAppState extends State<SafePersonalApp>
       setState(() {
         _isFlashOn = !_isFlashOn;
         _flashButtonColor = _isFlashOn
-            ? Colors.yellow
-            : Color.fromARGB(255, 225, 225, 225); // Zmiana koloru przycisku
+            ? Colors.orange
+            : Colors.orange; // Zmiana koloru przycisku
       });
     } catch (e) {
       print("Błąd podczas przełączania latarki: $e");
@@ -821,14 +659,6 @@ class _SafePersonalAppState extends State<SafePersonalApp>
       return;
     }
     String appDocPath = appDocDir.path;
-
-    // Use getExternalStorageDirectory() instead of getApplicationDocumentsDirectory()
-    // Directory? appDocDir = await getExternalStorageDirectory();
-    // String appDocPath = appDocDir!.path;
-
-    // Katalog "recordings" wewnątrz katalogu dokumentów
-    // String recordingsPath = '$appDocPath/Recordings';
-    // Katalog "Recordings" wewnątrz katalogu dostępnego publicznie
     // Uzyskaj katalog dostępny publicznie
     Directory? publicDir = await getExternalStorageDirectory();
 
@@ -872,8 +702,6 @@ class _SafePersonalAppState extends State<SafePersonalApp>
     try {
       await File(path!).copy(recordedFile.path);
       print('File copied successfully to: ${recordedFile.path}');
-      // // Open the file using the open_file plugin
-      // OpenFile.open(recordedFile.path);
       // Dodaj nowe nagranie do listy recentRecordings
       setState(() {
         recentRecordings.insert(0, recordedFile);
@@ -915,70 +743,20 @@ class _SafePersonalAppState extends State<SafePersonalApp>
     super.dispose();
   }
 
+  //build
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Color.fromARGB(255, 216, 232, 255),
       appBar: AppBar(
-        title: Text('Bezpieczeństwo Personalne'),
+        title: Text('Bezpieczeństwo Personalne ${widget.username}'),
       ),
       body: Padding(
         padding: EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Text(
-                'Nazwa użytkownika: ${widget.username}',
-                style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
-              ),
-            ),
             SizedBox(height: 16.0),
-            // InkWell(
-            //   onTap: () {
-            //     _openMapWithCurrentLocation();
-            //   },
-            //   child: Container(
-            //     height: 100.0,
-            //     decoration: BoxDecoration(
-            //       border: Border.all(),
-            //       borderRadius: BorderRadius.circular(8.0),
-            //     ),
-            //     child: Column(
-            //       mainAxisAlignment: MainAxisAlignment.center,
-            //       children: [
-            //         Text(
-            //           'Twoje położenie',
-            //           style: TextStyle(fontSize: 16.0),
-            //         ),
-            //         SizedBox(height: 8.0),
-            //         _currentPosition != null
-            //             ? Column(
-            //                 children: [
-            //                   // Text(
-            //                   //   'Szerokość: ${_currentPosition!.latitude}',
-            //                   // ),
-            //                   Text(
-            //                     'Szerokość: ${getDegreesMinutes(_currentPosition!.latitude, 'latitude')}',
-            //                   ),
-            //                   // Text(
-            //                   //   'Długość: ${_currentPosition!.longitude}',
-            //                   // ),
-            //                   Text(
-            //                     'Długość: ${getDegreesMinutes(_currentPosition!.longitude, 'longitude')}',
-            //                   ),
-            //                 ],
-            //               )
-            //             : CircularProgressIndicator(),
-            //         SizedBox(height: 8.0),
-            //         Text(
-            //           'Kliknij, by zobaczyć mapę',
-            //           style: TextStyle(fontSize: 12.0),
-            //         ),
-            //       ],
-            //     ),
-            //   ),
-            // ),
-
             InkWell(
               onTap: () {
                 if (_currentPosition != null) {
@@ -1031,9 +809,7 @@ class _SafePersonalAppState extends State<SafePersonalApp>
                 ),
               ),
             ),
-
             SizedBox(height: 16.0),
-
             ButtonBar(
               alignment: MainAxisAlignment.center,
               children: [
@@ -1048,11 +824,14 @@ class _SafePersonalAppState extends State<SafePersonalApp>
                       borderRadius: BorderRadius.circular(8.0),
                     ),
                   ),
-                  child: Text('Wyślij SMS'),
+                  child: Text(
+                    'Wyślij SMS',
+                    style:
+                        TextStyle(fontSize: 20.0, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ],
             ),
-
             SizedBox(height: 16.0),
             TextField(
               controller: _smsController,
@@ -1078,11 +857,15 @@ class _SafePersonalAppState extends State<SafePersonalApp>
                   ),
                 ElevatedButton(
                   onPressed: _pickContact,
-                  child: Text('Zmień kontakt'),
+                  child: Text('Zmień ⚙️'),
+                  style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                    ),
+                  ),
                 ),
               ],
             ),
-
             SizedBox(height: 8.0),
             Container(
               decoration: BoxDecoration(
@@ -1279,36 +1062,70 @@ class _SafePersonalAppState extends State<SafePersonalApp>
                 ],
               ),
             ),
-
-            SizedBox(height: 8.0),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => MusicScreen(
-                      recentRecordings: recentRecordings
-                          .map((file) => file.path)
-                          .toList(), // Konwersja na List<String>
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(height: 8.0), // Odstęp przed przyciskami
+                ButtonBar(
+                  alignment:
+                      MainAxisAlignment.center, // Wyrównanie do prawej krawędzi
+                  children: [
+                    SizedBox(
+                      width: 120.0,
+                      height: 40,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          // Logika dla przycisku kompasu
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  CompassWidget(), // Kompas jako osobny ekran
+                            ),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
+                        ),
+                        child: Text('Kompas 🧭'),
+                      ),
                     ),
-                  ),
-                );
-              },
-              child: Text('Ostatnie nagrania'),
-            ),
-            // Odtwarzacz dźwięku
-            // Tutaj można dodać widgety do odtwarzania dźwięku
-            // Przycisk "Wyloguj się"
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => LoginPage(),
-                  ),
-                );
-              },
-              child: Text('Wyloguj się'),
+                    SizedBox(width: 16.0), // Odstęp między przyciskami
+                    SizedBox(
+                      width:
+                          120.0, // Określona szerokość przycisku "Ostatnie nagrania"
+                      height: 40,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          // Logika dla przycisku "Ostatnie nagrania"
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => MusicScreen(
+                                recentRecordings: recentRecordings
+                                    .map((file) => file.path)
+                                    .toList(),
+                              ),
+                            ),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
+                        ),
+                        child: Text(
+                          'Nagrania 🔊',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                // Tutaj możesz umieścić widget kompasu
+              ],
             ),
           ],
         ),
@@ -1337,21 +1154,6 @@ class _MusicScreenState extends State<MusicScreen> {
     _initPlayer();
   }
 
-  // Future<void> _initPlayer() async {
-  //   await _audioPlayer.setFilePath(widget.recentRecordings[_currentIndex]);
-
-  //   _audioPlayer.positionStream.listen((Duration position) {
-  //     setState(() {
-  //       // Update UI with the current playback position
-  //     });
-  //   });
-
-  //   _audioPlayer.durationStream.listen((Duration? duration) {
-  //     setState(() {
-  //       // Update UI with the current duration
-  //     });
-  //   });
-  // }
   Future<void> _initPlayer() async {
     if (widget.recentRecordings.isNotEmpty) {
       await _audioPlayer.setFilePath(widget.recentRecordings[_currentIndex]);
@@ -1408,7 +1210,7 @@ class _MusicScreenState extends State<MusicScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Recent Recordings'),
+        title: Text('Ostatnie Nagrania 🎵'),
       ),
       body: Column(
         children: [
@@ -1433,7 +1235,7 @@ class _MusicScreenState extends State<MusicScreen> {
                   )
                 : Center(
                     child: Text(
-                      'Brak aktualnych nagran',
+                      'Brak aktualnych nagrań',
                       style: TextStyle(fontSize: 18),
                     ),
                   ),
